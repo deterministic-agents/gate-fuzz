@@ -1,0 +1,36 @@
+[package]
+name = "gate-rust-cli"
+version = "1.0.0"
+edition = "2021"
+rust-version = "1.78"
+license = "MIT"
+description = "Line-delimited JSON CLI wrapper around gate-rust v1.0.0 for cross-language property testing via gate-fuzz."
+
+# This binary is a test-time tool, not a publishable crate.
+publish = false
+
+[[bin]]
+name = "gate-rust-cli"
+path = "src/main.rs"
+
+[dependencies]
+# gate-rust v1.0.0 consumed via local path. The relative-path fragility risk
+# (PHASE-1 R4) is mitigated by documenting this path in PROTOCOL.md and adding
+# the location to the v1.4 coordinated release gate per RELEASE-PROCESS.md.
+gate-rust = { path = "../../../../workstream-6/gate-rust", default-features = true }
+serde_json = "1.0"
+base64 = "0.22"
+# jsonschema crate per SO1.1 (Draft 2020-12 to match gate-python's
+# Draft202012Validator). default-features disabled to skip the CLI + HTTP
+# resolver; we only need core validation + Draft 2020-12 support and
+# file resolution.
+jsonschema = { version = "0.18", default-features = false, features = [
+  "draft202012",
+  "resolve-file",
+] }
+
+[profile.release]
+opt-level = 3
+lto = false
+codegen-units = 1
+strip = true

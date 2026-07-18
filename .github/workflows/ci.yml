@@ -1,0 +1,126 @@
+name: gate-fuzz CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run mode (smoke | standard | soak)"
+        required: false
+        default: "soak"
+        type: choice
+        options:
+          - smoke
+          - standard
+          - soak
+
+# SO1.5: Python 3.11 + 3.13 on ubuntu-latest. Trigger map:
+#   pull_request           -> smoke   (fast PR feedback)
+#   push to main           -> standard
+#   workflow_dispatch      -> mode from input (defaults to soak)
+# R8 mitigation: Hypothesis example database persists as a CI artifact
+# for run-to-run shrinking; the next run downloads + seeds from it.
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - name: Checkout monorepo (gate-fuzz is one workstream)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up Rust (MSRV pinned)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.78"
+
+      - name: Cache cargo registry + target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            v1.4/workstream-7/gate-fuzz/tools/gate-rust-cli/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock', '**/Cargo.toml') }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('v1.4/workstream-7/gate-fuzz/pyproject.toml') }}
+
+      - name: Restore Hypothesis database (R8 mitigation)
+        uses: actions/cache@v4
+        with:
+          path: v1.4/workstream-7/gate-fuzz/.hypothesis
+          key: hypothesis-${{ runner.os }}-py${{ matrix.python-version }}-${{ github.run_id }}
+          restore-keys: |
+            hypothesis-${{ runner.os }}-py${{ matrix.python-version }}-
+
+      - name: Install gate-python (source-tree)
+        working-directory: v1.4/workstream-5/gate-python
+        run: pip install -e .
+
+      - name: Install gate-fuzz
+        working-directory: v1.4/workstream-7/gate-fuzz
+        run: pip install -e .[dev]
+
+      - name: Build gate-rust-cli (release profile)
+        working-directory: v1.4/workstream-7/gate-fuzz/tools/gate-rust-cli
+        run: cargo build --release
+
+      - name: Pick run mode from trigger
+        id: pick-mode
+        run: |
+          case "${{ github.event_name }}" in
+            pull_request) mode=smoke ;;
+            push)         mode=standard ;;
+            workflow_dispatch) mode="${{ github.event.inputs.mode }}" ;;
+            *)            mode=smoke ;;
+          esac
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+
+      - name: Run gate-fuzz (${{ steps.pick-mode.outputs.mode }})
+        working-directory: v1.4/workstream-7/gate-fuzz
+        env:
+          GATE_RUST_CLI_BIN: ${{ github.workspace }}/v1.4/workstream-7/gate-fuzz/tools/gate-rust-cli/target/release/gate-rust-cli
+          GATE_PYTHON_SRC: ${{ github.workspace }}/v1.4/workstream-5/gate-python
+        run: |
+          gate-fuzz ${{ steps.pick-mode.outputs.mode }} \
+            --junitxml junit-${{ matrix.python-version }}.xml
+
+      - name: Upload JUnit XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-py${{ matrix.python-version }}
+          path: v1.4/workstream-7/gate-fuzz/junit-${{ matrix.python-version }}.xml
+          retention-days: 90
+
+      - name: Upload Check15 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: check15-evidence-py${{ matrix.python-version }}
+          path: v1.4/workstream-7/gate-fuzz/output/check15-evidence/
+          retention-days: 90
+
+      - name: Save Hypothesis database for next run
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hypothesis-db-py${{ matrix.python-version }}
+          path: v1.4/workstream-7/gate-fuzz/.hypothesis/
+          retention-days: 30

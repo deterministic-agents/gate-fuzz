@@ -1,0 +1,68 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gate-fuzz"
+version = "1.0.0"
+description = "Cross-language differential property tests for GATE v1.4 (gate-python v1.2.0 vs gate-rust v1.0.0)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [
+  { name = "Andrew Stevens", email = "andrew@deterministicagents.ai" },
+]
+keywords = [
+  "gate",
+  "deterministic-agents",
+  "ai-governance",
+  "property-testing",
+  "hypothesis",
+  "cross-language",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Information Technology",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Security",
+  "Topic :: Software Development :: Quality Assurance",
+]
+
+dependencies = [
+  "hypothesis>=6.100.0",
+  "pytest>=8.0.0",
+  "jsonschema>=4.21.0",
+  # gate-python is consumed via source-tree path per PHASE-0 Axis 9 (no PyPI dep).
+  # The harness adds it to sys.path at test time via the GATE_PYTHON_SRC env var
+  # (defaults to ../../workstream-5/gate-python; the gate package is at that
+  # directory's root, not under src/).
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest-cov>=4.1.0",
+  "ruff>=0.4.0",
+]
+
+[project.scripts]
+gate-fuzz = "gate_fuzz.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gate_fuzz"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = [
+  "property: cross-language differential property test (uses subprocess)",
+  "meta: meta-test for strategy reach (Hypothesis input generation)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
