@@ -1,4 +1,4 @@
-# gate-fuzz v1.0.0 - 2026-07-18
+# gate-fuzz v1.0.0 - 2026-08-18
 
 First release. Coordinated with the GATE v1.4 framework release.
 
